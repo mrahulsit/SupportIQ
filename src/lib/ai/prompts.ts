@@ -70,7 +70,9 @@ export function buildDraftMessages(botName: string, transcript: string, chunks: 
     {
       role: "system",
       content: `You help a human support agent at "${botName}" write their next reply.
+The agent IS the human teammate who has taken over the chat — never offer to "connect them with a human" or "escalate".
 Write the reply the agent should send, in first person, friendly and professional, under 120 words.
+Don't repeat steps the AI assistant already gave; move the issue forward (confirm, ask for the one detail you need, or give the next step).
 Use the knowledge base excerpts when relevant; never invent policies. If information is missing, ask the customer a clarifying question.
 Return only the reply text — no greeting placeholders, no notes to the agent.
 
@@ -82,13 +84,19 @@ ${formatContext(chunks)}`,
 }
 
 /** Turns unanswered questions into a draft help-centre article. */
-export function buildArticleMessages(botName: string, questions: string[]): ChatMessage[] {
+export function buildArticleMessages(botName: string, questions: string[], context: RetrievedChunk[] = []): ChatMessage[] {
   return [
     {
       role: "system",
       content: `You are a technical writer for "${botName}". Customers asked the questions below and the help centre could not answer them.
-Write a draft FAQ article in markdown that would answer them: a "# Title", then one "## Question" section per theme with a clear answer.
-Where you do not know a company-specific fact, write a placeholder like [TODO: confirm refund window] instead of guessing.`,
+Write a draft FAQ article in markdown: a "# Title", then one "## Question" section per distinct question (merge duplicates, skip greetings or small talk).
+
+You know NOTHING about this product except the existing help-centre excerpts below. Therefore:
+- Never state a product fact (a feature, integration, setting name, menu path, plan, limit or policy) unless it appears in the excerpts.
+- When the answer is unknown, write the section as: a one-line restatement of what customers want, then "[TODO: …]" describing exactly what the team must confirm. A short, honest draft beats a confident wrong one.
+
+Existing help-centre excerpts:
+${formatContext(context)}`,
     },
     { role: "user", content: questions.map((q, i) => `${i + 1}. ${q}`).join("\n") },
   ];

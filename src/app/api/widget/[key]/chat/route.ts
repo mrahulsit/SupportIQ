@@ -6,7 +6,7 @@ import { aiEnabled, chatModel, stream } from "@/lib/ai/openrouter";
 import { buildAnswerMessages } from "@/lib/ai/prompts";
 import { CONFIDENCE_THRESHOLD, searchKnowledge } from "@/lib/ai/retrieval";
 import { extractiveAnswer } from "@/lib/ai/heuristics";
-import { wantsHuman } from "@/lib/ai/text";
+import { keywords, wantsHuman } from "@/lib/ai/text";
 import { triageConversation } from "@/lib/ai/triage";
 import { VisitorId, clientIp, getBotByKey, getVisitorConversation, json } from "@/lib/widget";
 
@@ -96,11 +96,17 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/widget/[key
         let model = "extractive";
         if (aiEnabled()) {
           try {
-            for await (const delta of stream(buildAnswerMessages(bot, history, relevant, message), { signal: req.signal })) {
+            let answeredBy = chatModel();
+            const deltas = stream(buildAnswerMessages(bot, history, relevant, message), {
+              signal: req.signal,
+              onModel: (m) => (answeredBy = m), // may be a fallback model
+            });
+            for await (const delta of deltas) {
               text += delta;
               send("token", { t: delta });
             }
-            model = chatModel();
+            if (!text.trim()) throw new Error("Model returned an empty answer");
+            model = answeredBy;
           } catch (err) {
             // Model outage / free-tier rate limit: fall back to an extractive answer.
             console.warn("[chat] model failed, using extractive fallback:", (err as Error).message);
@@ -124,7 +130,8 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/widget/[key
             content: text.trim(),
             sources: usedSources,
             confidence,
-            unanswered: relevant.length === 0,
+            // Greetings / small talk ("hi", "thanks") have no searchable terms and aren't knowledge gaps.
+            unanswered: relevant.length === 0 && keywords(message).length > 0,
             latencyMs: Date.now() - started,
             model,
           },
@@ -139,8 +146,9 @@ export async function POST(req: NextRequest, ctx: RouteContext<"/api/widget/[key
     },
   });
 
-  // Background AI triage (first turns, then every third turn) after the response is sent.
-  if (userTurns <= 2 || userTurns % 3 === 0) {
+  // Background AI triage (first turn, then every third turn) after the response is sent.
+  // Kept sparse so free-tier model quotas go to answering visitors.
+  if (userTurns === 1 || userTurns % 3 === 0) {
     after(() => triageConversation(conversation.id).catch((e) => console.error("[triage]", e)));
   }
 

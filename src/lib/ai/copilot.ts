@@ -16,10 +16,11 @@ export async function draftAgentReply(conversationId: string): Promise<string> {
 
   if (aiEnabled()) {
     try {
-      return await complete(buildDraftMessages(convo.bot.name, transcriptOf(convo.messages), chunks), {
+      const { text } = await complete(buildDraftMessages(convo.bot.name, transcriptOf(convo.messages), chunks), {
         temperature: 0.4,
         maxTokens: 400,
       });
+      return text;
     } catch (err) {
       console.warn("[copilot] draft failed, falling back:", (err as Error).message);
     }
@@ -47,11 +48,14 @@ export async function knowledgeGaps(botIds: string[], limit = 20) {
   return rows.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime()).slice(0, limit);
 }
 
-/** Writes a draft help article covering the bot's knowledge gaps. */
-export async function suggestArticle(botName: string, questions: string[]): Promise<string> {
+/** Writes a draft help article covering the bot's knowledge gaps (unknown facts become [TODO]s). */
+export async function suggestArticle(botId: string, botName: string, questions: string[]): Promise<string> {
   if (aiEnabled()) {
     try {
-      return await complete(buildArticleMessages(botName, questions), { temperature: 0.5, maxTokens: 1200 });
+      // Give the writer whatever the knowledge base already says, so it can reuse real facts.
+      const { chunks } = await searchKnowledge(botId, questions.join(" "), 4);
+      const { text } = await complete(buildArticleMessages(botName, questions, chunks), { temperature: 0.2, maxTokens: 1200 });
+      return text;
     } catch (err) {
       console.warn("[copilot] article draft failed, falling back:", (err as Error).message);
     }

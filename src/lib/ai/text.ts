@@ -78,6 +78,16 @@ export function chunkText(text: string, size = 900, overlap = 150): string[] {
 }
 
 /**
+ * Raw cosine similarity ranges differ a lot between embedding models, so map
+ * the model's "unrelated → clearly relevant" band onto 0..1. The defaults fit
+ * nvidia/nemotron-3-embed-1b (unrelated ≈ 0.0–0.2, relevant ≈ 0.27–0.35);
+ * tune EMBED_SIM_FLOOR / EMBED_SIM_CEIL when switching models.
+ */
+export function calibrateSimilarity(sim: number, floor = Number(process.env.EMBED_SIM_FLOOR ?? 0.1), ceil = Number(process.env.EMBED_SIM_CEIL ?? 0.35)) {
+  return Math.max(0, Math.min(1, (sim - floor) / (ceil - floor)));
+}
+
+/**
  * Reciprocal Rank Fusion: merges several ranked id lists into one score map.
  * score(id) = Σ 1 / (k + rank)
  */

@@ -31,7 +31,7 @@ export async function triageConversation(conversationId: string) {
 
   if (aiEnabled()) {
     try {
-      const raw = await complete(buildTriageMessages(transcriptOf(convo.messages)), {
+      const { text: raw } = await complete(buildTriageMessages(transcriptOf(convo.messages)), {
         temperature: 0,
         maxTokens: 300,
       });

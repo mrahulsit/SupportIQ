@@ -29,11 +29,29 @@ export function aiEnabled() {
 }
 
 export function chatModel() {
-  return process.env.OPENROUTER_CHAT_MODEL || "google/gemma-4-31b-it:free";
+  return process.env.OPENROUTER_CHAT_MODEL || "nvidia/nemotron-3.5-super-vl:free";
 }
 
 export function embedModel() {
-  return process.env.OPENROUTER_EMBED_MODEL || "nvidia/nemotron-3.5-embed-1b:free";
+  return process.env.OPENROUTER_EMBED_MODEL || "nvidia/nemotron-3-embed-1b:free";
+}
+
+/**
+ * Model routing: OpenRouter tries `models` in order when one is down or
+ * rate-limited, which keeps free-tier models usable in practice.
+ */
+function routing(model?: string) {
+  const primary = model ?? chatModel();
+  const fallbacks = (process.env.OPENROUTER_FALLBACK_MODELS ?? "")
+    .split(",")
+    .map((m) => m.trim())
+    .filter((m) => m && m !== primary);
+  const models = fallbacks.length ? { models: [primary, ...fallbacks].slice(0, 3) } : {};
+  // Reasoning ("thinking") models can burn the whole token budget before writing
+  // an answer. Support replies are short and grounded, so thinking is off unless
+  // OPENROUTER_REASONING=true. Models without reasoning ignore this field.
+  const reasoning = { reasoning: { enabled: process.env.OPENROUTER_REASONING === "true" } };
+  return { model: primary, ...models, ...reasoning };
 }
 
 function headers() {
@@ -55,17 +73,27 @@ async function post(path: string, body: unknown, signal?: AbortSignal) {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    // Some models refuse requests with thinking disabled: retry once with a small
+    // thinking budget and room left over for the actual answer.
+    if (res.status === 400 && /reasoning is mandatory/i.test(text) && isChatBody(body) && body.reasoning?.enabled === false) {
+      return post(path, { ...body, reasoning: { effort: "low" }, max_tokens: (body.max_tokens ?? 700) + 1500 }, signal);
+    }
     throw new AIError(`OpenRouter ${res.status}: ${text.slice(0, 300)}`, res.status);
   }
   return res;
 }
 
-/** Non-streaming completion. Returns the assistant text. */
+type ChatBody = { reasoning?: { enabled?: boolean }; max_tokens?: number };
+function isChatBody(body: unknown): body is ChatBody {
+  return typeof body === "object" && body !== null && "messages" in body;
+}
+
+/** Non-streaming completion. Returns the assistant text and the model that actually answered. */
 export async function complete(messages: ChatMessage[], opts: CompletionOptions = {}) {
   const res = await post(
     "/chat/completions",
     {
-      model: opts.model ?? chatModel(),
+      ...routing(opts.model),
       messages,
       temperature: opts.temperature ?? 0.2,
       max_tokens: opts.maxTokens ?? 700,
@@ -74,20 +102,27 @@ export async function complete(messages: ChatMessage[], opts: CompletionOptions 
   );
   const json = await res.json();
   if (json.error) throw new AIError(json.error.message ?? "OpenRouter error");
-  const content: string | undefined = json.choices?.[0]?.message?.content;
-  if (!content) throw new AIError("Model returned an empty response");
-  return content.trim();
+  const choice = json.choices?.[0];
+  const content: string | undefined = choice?.message?.content;
+  if (!content) {
+    throw new AIError(
+      choice?.finish_reason === "length"
+        ? "Model hit the token limit before answering (reasoning model?)"
+        : "Model returned an empty response",
+    );
+  }
+  return { text: content.trim(), model: (json.model as string | undefined) ?? opts.model ?? chatModel() };
 }
 
 /** Streaming completion: yields text deltas as they arrive (SSE). */
 export async function* stream(
   messages: ChatMessage[],
-  opts: CompletionOptions = {},
+  opts: CompletionOptions & { onModel?: (model: string) => void } = {},
 ): AsyncGenerator<string> {
   const res = await post(
     "/chat/completions",
     {
-      model: opts.model ?? chatModel(),
+      ...routing(opts.model),
       messages,
       temperature: opts.temperature ?? 0.2,
       max_tokens: opts.maxTokens ?? 700,
@@ -117,6 +152,10 @@ export async function* stream(
       try {
         const json = JSON.parse(data);
         if (json.error) throw new AIError(json.error.message ?? "Stream error");
+        if (json.model && opts.onModel) {
+          opts.onModel(json.model);
+          opts.onModel = undefined;
+        }
         const delta: string | undefined = json.choices?.[0]?.delta?.content;
         if (delta) yield delta;
       } catch (err) {

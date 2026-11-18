@@ -1,7 +1,7 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { aiEnabled, embed, embedModel } from "./openrouter";
-import { reciprocalRankFusion, termCoverage, toOrTsQuery } from "./text";
+import { calibrateSimilarity, reciprocalRankFusion, termCoverage, toOrTsQuery } from "./text";
 
 export type RetrievedChunk = {
   id: string;
@@ -97,8 +97,7 @@ function confidenceFor(query: string, chunks: RetrievedChunk[]) {
   const coverage = Math.max(...chunks.slice(0, 2).map((c) => termCoverage(query, `${c.title} ${c.content}`)));
   const sims = chunks.map((c) => c.similarity).filter((s): s is number => s != null);
   if (sims.length === 0) return Number(coverage.toFixed(2));
-  const topSim = Math.max(...sims);
-  return Number(Math.min(1, 0.6 * topSim + 0.4 * coverage).toFixed(2));
+  return Number(Math.min(1, 0.6 * calibrateSimilarity(Math.max(...sims)) + 0.4 * coverage).toFixed(2));
 }
 
 /** Below this, the assistant treats the question as a knowledge gap. */

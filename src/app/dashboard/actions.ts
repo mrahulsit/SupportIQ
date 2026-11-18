@@ -113,7 +113,7 @@ export async function draftGapArticle(botId: string): Promise<{ title: string; c
   const { bot } = await requireOwnedBot(botId);
   const gaps = await knowledgeGaps([bot.id], 15);
   if (gaps.length === 0) return { error: "No knowledge gaps yet — nice!" };
-  const content = await suggestArticle(bot.name, gaps.map((g) => g.question));
+  const content = await suggestArticle(bot.id, bot.name, gaps.map((g) => g.question));
   const title = content.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? "Frequently asked questions";
   return { title, content };
 }

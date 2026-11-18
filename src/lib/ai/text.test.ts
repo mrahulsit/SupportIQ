@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   bestSentences,
+  calibrateSimilarity,
   chunkText,
   extractJson,
   htmlToText,
@@ -54,6 +55,18 @@ describe("chunkText", () => {
     expect(chunks.every((c) => c.length <= 900)).toBe(true);
     expect(chunks.join("").replace(/\s/g, "").length).toBeGreaterThanOrEqual(2500);
   });
+});
+
+describe("calibrateSimilarity", () => {
+  it("maps the model's similarity band onto 0..1 and clamps", () => {
+    expect(calibrateSimilarity(0.05, 0.1, 0.35)).toBe(0);
+    expect(calibrateSimilarity(0.225, 0.1, 0.35)).toBeCloseTo(0.5);
+    expect(calibrateSimilarity(0.6, 0.1, 0.35)).toBe(1);
+  });
+});
+
+describe("greetings are not knowledge gaps", () => {
+  it.each(["hi", "Hello!", "thanks", "thank you"])("%s has no searchable keywords", (msg) => expect(keywords(msg)).toEqual([]));
 });
 
 describe("reciprocalRankFusion", () => {
