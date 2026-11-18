@@ -1,0 +1,166 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime  @default(now())
+  bots         Bot[]
+  messages     Message[] @relation("AgentMessages")
+}
+
+model Bot {
+  id             String         @id @default(cuid())
+  ownerId        String
+  owner          User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  /// Public identifier used in the embed snippet (never the internal id)
+  publicKey      String         @unique
+  name           String
+  greeting       String         @default("Hi! How can I help you today?")
+  systemPrompt   String         @default("You are a friendly, concise customer support assistant.")
+  brandColor     String         @default("#4f46e5")
+  /// Suggested first questions shown in the widget
+  starters       String[]       @default([])
+  /// Sites allowed to embed the widget (CSP frame-ancestors). Empty = any site.
+  allowedOrigins String[]       @default([])
+  handoffEnabled Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+  documents      Document[]
+  chunks         Chunk[]
+  conversations  Conversation[]
+
+  @@index([ownerId])
+}
+
+enum SourceType {
+  TEXT
+  URL
+}
+
+enum DocumentStatus {
+  PROCESSING
+  READY
+  FAILED
+}
+
+model Document {
+  id         String         @id @default(cuid())
+  botId      String
+  bot        Bot            @relation(fields: [botId], references: [id], onDelete: Cascade)
+  title      String
+  sourceType SourceType
+  sourceUrl  String?
+  content    String
+  status     DocumentStatus @default(PROCESSING)
+  error      String?
+  chunkCount Int            @default(0)
+  createdAt  DateTime       @default(now())
+  chunks     Chunk[]
+
+  @@index([botId])
+}
+
+model Chunk {
+  id             String                 @id @default(cuid())
+  documentId     String
+  document       Document               @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  botId          String
+  bot            Bot                    @relation(fields: [botId], references: [id], onDelete: Cascade)
+  index          Int
+  content        String
+  /// pgvector embedding; dimension depends on the embedding model
+  embedding      Unsupported("vector")?
+  embeddingModel String?
+
+  // Keyword search uses a GIN expression index on to_tsvector(content), created in the init migration.
+  @@index([botId])
+  @@index([documentId])
+}
+
+enum ConversationStatus {
+  AI
+  NEEDS_HUMAN
+  HUMAN
+  RESOLVED
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model Conversation {
+  id            String             @id @default(cuid())
+  botId         String
+  bot           Bot                @relation(fields: [botId], references: [id], onDelete: Cascade)
+  visitorId     String
+  pageUrl       String?
+  status        ConversationStatus @default(AI)
+  // --- AI triage ---
+  summary       String?
+  category      String?
+  sentiment     Sentiment?
+  priority      Priority?
+  triagedAt     DateTime?
+  // --- outcome ---
+  /// Set the first time the conversation is handed to a human
+  escalatedAt   DateTime?
+  /// 1-5 rating the visitor gives when ending the chat
+  csat          Int?
+  /// "AI" when resolved with no human reply, otherwise "AGENT"
+  resolvedBy    String?
+  resolvedAt    DateTime?
+  createdAt     DateTime           @default(now())
+  lastMessageAt DateTime           @default(now())
+  messages      Message[]
+
+  @@index([botId, lastMessageAt])
+  @@index([botId, status])
+  @@index([visitorId])
+}
+
+enum MessageRole {
+  USER
+  ASSISTANT
+  AGENT
+  SYSTEM
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           MessageRole
+  content        String
+  /// Knowledge-base citations: [{ n, documentId, title, snippet }]
+  sources        Json?
+  /// Retrieval confidence 0..1 for assistant replies
+  confidence     Float?
+  /// True when the knowledge base had nothing relevant (knowledge gap)
+  unanswered     Boolean      @default(false)
+  feedback       Int?
+  latencyMs      Int?
+  model          String?
+  agentId        String?
+  agent          User?        @relation("AgentMessages", fields: [agentId], references: [id], onDelete: SetNull)
+  createdAt      DateTime     @default(now())
+
+  @@index([conversationId, createdAt])
+}
