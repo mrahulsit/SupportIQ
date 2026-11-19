@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { FileText, Globe, Lightbulb, RefreshCw, Trash2 } from "lucide-react";
+import { BookOpenCheck, FileText, Globe, Lightbulb, RefreshCw, Trash2 } from "lucide-react";
 import { requireOwnedBot } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { knowledgeGaps } from "@/lib/ai/copilot";
@@ -24,6 +24,7 @@ export default async function KnowledgePage({ params }: PageProps<"/dashboard/bo
     knowledgeGaps([bot.id], 15),
   ]);
   const processing = docs.some((d) => d.status === "PROCESSING");
+  const ownDocs = docs.filter((d) => d.title !== "Getting started").length;
 
   return (
     <div className="grid gap-6 p-4 md:p-8 xl:grid-cols-[minmax(0,1fr)_380px]">
@@ -75,6 +76,26 @@ export default async function KnowledgePage({ params }: PageProps<"/dashboard/bo
       </div>
 
       <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
+        <section className={`card p-5 ${ownDocs === 0 ? "ring-indigo-300" : ""}`}>
+          <h2 className="flex items-center gap-2 font-semibold">
+            <BookOpenCheck className="size-4 text-indigo-600" /> What to add
+          </h2>
+          {ownDocs === 0 && (
+            <p className="mt-2 rounded-lg bg-indigo-50 px-3 py-2 text-xs text-indigo-900">
+              Only the starter article is here, so the assistant can’t answer questions about your business yet. Add a few sources to get started.
+            </p>
+          )}
+          <ul className="mt-3 space-y-2 text-sm text-slate-600">
+            <li><b className="text-slate-800">Your FAQ</b> — the questions customers ask most.</li>
+            <li><b className="text-slate-800">Policies</b> — shipping, returns, refunds, privacy.</li>
+            <li><b className="text-slate-800">Product & pricing</b> — plans, features, limits.</li>
+            <li><b className="text-slate-800">How-to guides</b> — setup and troubleshooting steps.</li>
+          </ul>
+          <p className="mt-3 text-xs text-slate-500">
+            Tip: one topic per source, written in the words customers use. The assistant only answers from what’s here, so it never makes up policies.
+          </p>
+        </section>
+
         <section className="card">
           <div className="border-b border-slate-100 px-5 py-4">
             <h2 className="flex items-center gap-2 font-semibold">

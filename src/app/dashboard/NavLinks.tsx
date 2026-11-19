@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bot, Inbox, LayoutDashboard } from "lucide-react";
+import { Bot, Inbox, LayoutDashboard, LifeBuoy } from "lucide-react";
 
 const links = [
   { href: "/dashboard", label: "Overview", icon: LayoutDashboard, exact: true },
@@ -32,6 +32,14 @@ export function NavLinks({ waiting }: { waiting: number }) {
           </Link>
         );
       })}
+      <a
+        href="/#setup"
+        target="_blank"
+        className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100 hover:text-slate-900 md:mt-2"
+      >
+        <LifeBuoy className="size-4" />
+        Setup guide
+      </a>
     </nav>
   );
 }

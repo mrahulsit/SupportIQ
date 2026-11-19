@@ -43,7 +43,22 @@ export function ConversationList({ items }: { items: ListItem[] }) {
   return (
     <div className={`flex w-full shrink-0 flex-col border-r border-slate-200 bg-white md:w-72 lg:w-80 2xl:w-96 ${selected ? "hidden md:flex" : "flex"}`}>
       <div className="space-y-3 border-b border-slate-200 p-4">
-        <h1 className="text-lg font-semibold tracking-tight">Inbox</h1>
+        <div className="flex items-baseline justify-between gap-2">
+          <h1 className="text-lg font-semibold tracking-tight">Inbox</h1>
+          <details className="group relative text-xs">
+            <summary className="cursor-pointer list-none font-medium text-indigo-600 hover:underline [&::-webkit-details-marker]:hidden">How it works</summary>
+            <div className="absolute right-0 z-20 mt-2 w-72 space-y-2 rounded-xl bg-white p-4 text-slate-600 shadow-xl ring-1 ring-slate-200">
+              <p>Every chat from your website lands here. The AI answers first; you step in when needed.</p>
+              <ul className="space-y-1.5">
+                <li><Badge value="AI" /> the assistant is handling it</li>
+                <li><Badge value="NEEDS_HUMAN" /> the visitor asked for a person, or triage escalated it</li>
+                <li><Badge value="HUMAN" /> a teammate replied — the AI stays quiet</li>
+                <li><Badge value="RESOLVED" /> closed by you or the visitor</li>
+              </ul>
+              <p>Open a chat to see the AI summary, then use <b>Draft reply with AI</b> to answer faster.</p>
+            </div>
+          </details>
+        </div>
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search conversations" className="input pl-8" />

@@ -18,7 +18,10 @@ export default async function BotsPage() {
 
   return (
     <>
-      <PageHeader title="Assistants" description="Each assistant has its own knowledge base, persona and embed snippet." />
+      <PageHeader
+        title="Assistants"
+        description="Use one assistant per website or brand. Each has its own knowledge base, look and embed code — open one to install it."
+      />
       <div className="space-y-6 p-4 md:p-8">
         <form action={createBot} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-center">
           <input name="name" required minLength={2} maxLength={60} placeholder="New assistant name, e.g. Acme Help" className="input flex-1" />

@@ -1,7 +1,10 @@
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowRight, Lightbulb } from "lucide-react";
+import { ArrowRight, Info, Lightbulb } from "lucide-react";
 import { requireUser } from "@/lib/auth";
+import { publicOrigin } from "@/lib/origin";
+import { setupSteps } from "@/lib/setup";
+import { SetupChecklist } from "./SetupChecklist";
 import { db } from "@/lib/db";
 import { getOverview, type Overview } from "@/lib/analytics";
 import { knowledgeGaps } from "@/lib/ai/copilot";
@@ -26,16 +29,27 @@ export default async function OverviewPage() {
     }),
   ]);
   const botName = new Map(bots.map((b) => [b.id, b.name]));
+  const steps = await setupSteps(user.id, await publicOrigin());
 
   return (
     <>
-      <PageHeader title="Overview" description={`Last ${o.days} days across ${bots.length} assistant${bots.length === 1 ? "" : "s"}`} />
+      <PageHeader
+        title={`Welcome, ${user.name.split(" ")[0]}`}
+        description={`How your assistants performed over the last ${o.days} days.`}
+      />
       <div className="space-y-6 p-4 md:p-8">
+        <SetupChecklist steps={steps} />
+
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Stat label="Conversations" value={o.total.toLocaleString()} hint={`${o.open} open with humans`} />
-          <Stat label="AI containment" value={pct(o.containment)} hint="Never needed a human" />
-          <Stat label="Answer helpfulness" value={pct(o.helpfulRate)} hint="Thumbs up on AI replies" />
-          <Stat label="CSAT" value={o.csat ? `${o.csat.toFixed(1)} / 5` : "—"} hint={`${o.csatCount} ratings · ${o.avgLatencyMs ? `${(o.avgLatencyMs / 1000).toFixed(1)}s avg reply` : "no replies yet"}`} />
+          <Stat label="Conversations" value={o.total.toLocaleString()} hint={`${o.open} open with your team`} help="Chats started in the last 14 days." />
+          <Stat label="AI containment" value={pct(o.containment)} hint="Solved without a human" help="Share of chats the AI handled on its own, without being handed to your team." />
+          <Stat label="Answer helpfulness" value={pct(o.helpfulRate)} hint="Thumbs up on AI answers" help="Of the AI answers visitors rated, the share they marked as helpful." />
+          <Stat
+            label="Satisfaction (CSAT)"
+            value={o.csat ? `${o.csat.toFixed(1)} / 5` : "—"}
+            hint={`${o.csatCount} ratings · ${o.avgLatencyMs ? `${(o.avgLatencyMs / 1000).toFixed(1)}s avg reply` : "no replies yet"}`}
+            help="Average star rating visitors give when they end a chat."
+          />
         </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
@@ -113,10 +127,12 @@ export default async function OverviewPage() {
   );
 }
 
-function Stat({ label, value, hint }: { label: string; value: string; hint: string }) {
+function Stat({ label, value, hint, help }: { label: string; value: string; hint: string; help: string }) {
   return (
-    <div className="card p-4">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+    <div className="card p-4" title={help}>
+      <p className="flex items-center gap-1 text-xs font-medium text-slate-500">
+        {label} <Info className="size-3 text-slate-400" aria-label={help} />
+      </p>
       <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight">{value}</p>
       <p className="mt-0.5 truncate text-xs text-slate-500">{hint}</p>
     </div>

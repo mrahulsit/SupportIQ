@@ -10,7 +10,10 @@ export function BotSettingsForm({ bot }: { bot: Bot }) {
 
   return (
     <form action={action} className="card space-y-5 p-5">
-      <h2 className="font-semibold">Assistant settings</h2>
+      <div>
+        <h2 className="font-semibold">Assistant settings</h2>
+        <p className="mt-0.5 text-sm text-slate-500">What visitors see in the chat and how the AI behaves. Changes apply to your website immediately.</p>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
         <label>
@@ -39,7 +42,7 @@ export function BotSettingsForm({ bot }: { bot: Bot }) {
         <textarea name="starters" defaultValue={bot.starters.join("\n")} rows={3} className="input" placeholder={"One per line (max 3)\nHow do refunds work?"} />
       </label>
 
-      <label className="block">
+      <label className="block scroll-mt-6" id="allowed-websites">
         <span className="label">Allowed websites</span>
         <textarea
           name="allowedOrigins"
@@ -48,7 +51,10 @@ export function BotSettingsForm({ bot }: { bot: Bot }) {
           className="input font-mono text-xs"
           placeholder={"https://www.example.com\nhttps://help.example.com"}
         />
-        <p className="hint">Enforced with a CSP <code>frame-ancestors</code> header. Leave empty to allow any site (handy while testing).</p>
+        <p className="hint">
+          One per line, e.g. <code>https://www.example.com</code>. Only these sites can show the chat (enforced with a CSP <code>frame-ancestors</code>{" "}
+          header). Leave empty to allow any site, including local test files.
+        </p>
       </label>
 
       <label className="flex items-start gap-3">

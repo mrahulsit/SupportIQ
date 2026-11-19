@@ -33,8 +33,12 @@ export async function proxy(req: NextRequest) {
     const res = NextResponse.next();
     try {
       const origins = await allowedOrigins(req, key);
-      const ancestors = !origins || origins.length === 0 ? "*" : ["'self'", ...origins].join(" ");
-      res.headers.set("Content-Security-Policy", `frame-ancestors ${ancestors}`);
+      // No allow-list → embeddable anywhere. We deliberately send no header here:
+      // `frame-ancestors *` only matches http(s) pages, so it would block local
+      // test pages opened from disk (file://) and other non-network schemes.
+      if (origins && origins.length > 0) {
+        res.headers.set("Content-Security-Policy", `frame-ancestors 'self' ${origins.join(" ")}`);
+      }
     } catch {
       res.headers.set("Content-Security-Policy", "frame-ancestors 'self'");
     }

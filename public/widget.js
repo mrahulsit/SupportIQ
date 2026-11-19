@@ -21,6 +21,8 @@
   var color = script.getAttribute("data-color") || "#4f46e5";
   var open = false;
   var frame = null;
+  var ready = false; // iframe app has loaded and said hello
+  var failed = false;
   var unread = 0;
 
   var css =
@@ -34,12 +36,21 @@
     "box-shadow:0 20px 50px rgba(15,23,42,.28);background:#fff;opacity:0;transform:translateY(12px) scale(.98);pointer-events:none;transition:opacity .18s ease,transform .18s ease}" +
     "#siq-panel.siq-open{opacity:1;transform:none;pointer-events:auto}" +
     "#siq-panel iframe{width:100%;height:100%;border:0;display:block}" +
+    "#siq-error{height:100%;display:flex;flex-direction:column;justify-content:center;gap:10px;padding:28px;font:14px/1.5 system-ui,-apple-system,sans-serif;color:#334155;text-align:center}" +
+    "#siq-error b{color:#0f172a;font-size:15px}#siq-error code{background:#f1f5f9;border-radius:4px;padding:1px 5px;font-size:12px}" +
+    "#siq-error a{color:#4f46e5;font-weight:600}" +
     "@media (max-width:480px){#siq-panel{inset:0;width:100%;height:100%;border-radius:0;bottom:0;" + position + ":0}#siq-panel.siq-open + #siq-launcher{display:none}}";
 
   var chatIcon =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
   var closeIcon =
     '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
 
   function mount() {
     var style = document.createElement("style");
@@ -74,22 +85,49 @@
       badge.style.display = n > 0 ? "block" : "none";
     }
 
+    var chatUrl = origin + "/embed/" + encodeURIComponent(key);
+
+    /** Replaces the panel with a readable explanation instead of a blank box. */
+    function showError(reason) {
+      failed = true;
+      var help =
+        reason === "unknown-bot"
+          ? "<span>The bot key <code>" + escapeHtml(key) + "</code> wasn't found. Copy the snippet again from your SupportIQ dashboard.</span>"
+          : "<span>This website may not be in the assistant's <b style='font-size:inherit'>Allowed websites</b> list. Add <code>" +
+            escapeHtml(location.origin === "null" ? "this page's address" : location.origin) +
+            "</code> in the dashboard, or leave the list empty while testing.</span>";
+      panel.innerHTML =
+        '<div id="siq-error"><b>The chat couldn’t load</b>' + help +
+        (reason === "unknown-bot" ? "" : '<a href="' + chatUrl + '" target="_blank" rel="noopener">Open the chat in a new tab ↗</a>') +
+        "</div>";
+      frame = null;
+      console.warn("[SupportIQ] chat failed to load:", reason);
+    }
+
     function toggle(next) {
       open = typeof next === "boolean" ? next : !open;
-      if (open && !frame) {
+      if (open && !frame && !failed) {
         // Lazy-load the iframe on first open to keep the host page fast.
         frame = document.createElement("iframe");
         frame.title = "Support chat";
         frame.allow = "clipboard-write";
-        frame.src = origin + "/embed/" + encodeURIComponent(key) + "?page=" + encodeURIComponent(location.href);
+        frame.src = chatUrl + "?page=" + encodeURIComponent(location.href);
         panel.appendChild(frame);
+        // A blocked iframe fires no error event, so detect it by the missing hello.
+        setTimeout(function () {
+          if (!ready && frame) showError("blocked");
+        }, 12000);
       }
       panel.classList.toggle("siq-open", open);
       button.innerHTML = (open ? closeIcon : chatIcon) + '<span id="siq-badge"></span>';
       button.setAttribute("aria-label", open ? "Close support chat" : "Open support chat");
       if (open) setBadge(0);
       else setBadge(unread);
-      if (frame && frame.contentWindow) frame.contentWindow.postMessage({ type: open ? "siq:open" : "siq:closed" }, origin);
+      notifyFrame();
+    }
+
+    function notifyFrame() {
+      if (ready && frame && frame.contentWindow) frame.contentWindow.postMessage({ type: open ? "siq:open" : "siq:closed" }, origin);
     }
 
     button.addEventListener("click", function () {
@@ -104,21 +142,27 @@
       if (e.origin !== origin || !frame || e.source !== frame.contentWindow) return;
       var data = e.data || {};
       if (data.type === "siq:close") toggle(false);
-      if (data.type === "siq:ready") frame.contentWindow.postMessage({ type: open ? "siq:open" : "siq:closed" }, origin);
+      if (data.type === "siq:ready") {
+        ready = true;
+        notifyFrame();
+      }
       if (data.type === "siq:unread" && !open) setBadge(unread + (data.count || 1));
     });
 
-    // Pick up the bot's brand colour (unless overridden with data-color).
-    if (!script.getAttribute("data-color")) {
-      fetch(origin + "/api/widget/" + encodeURIComponent(key) + "/config")
-        .then(function (r) {
-          return r.ok ? r.json() : null;
-        })
-        .then(function (cfg) {
-          if (cfg && cfg.brandColor) button.style.background = cfg.brandColor;
-        })
-        .catch(function () {});
-    }
+    // Check the bot key early and pick up its brand colour (unless overridden with data-color).
+    fetch(origin + "/api/widget/" + encodeURIComponent(key) + "/config")
+      .then(function (r) {
+        if (r.status === 404) {
+          console.error('[SupportIQ] Unknown bot key "' + key + '". Copy the embed snippet again from your dashboard.');
+          showError("unknown-bot");
+          return null;
+        }
+        return r.ok ? r.json() : null;
+      })
+      .then(function (cfg) {
+        if (cfg && cfg.brandColor && !script.getAttribute("data-color")) button.style.background = cfg.brandColor;
+      })
+      .catch(function () {});
 
     window.SupportIQ = { open: function () { toggle(true); }, close: function () { toggle(false); }, toggle: toggle };
   }

@@ -58,7 +58,7 @@ export async function updateBot(botId: string, _prev: FormState, form: FormData)
       handoffEnabled: d.handoffEnabled === "on",
     },
   });
-  revalidatePath(`/dashboard/bots/${botId}`);
+  revalidatePath(`/dashboard/bots/${botId}`, "layout");
   return { ok: "Saved" };
 }
 
